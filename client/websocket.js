@@ -8,6 +8,8 @@ export function registerSocketHandlers({
   socket,
   onHello,
   onState,
+  onUserJoined,
+  onUserLeft,
   onStrokeStart,
   onStrokeSegment,
   onStrokeEnd,
@@ -16,6 +18,8 @@ export function registerSocketHandlers({
 }) {
   socket.on("hello", onHello);
   socket.on("state", onState);
+  socket.on("user:joined", onUserJoined);
+  socket.on("user:left", onUserLeft);
   socket.on("stroke:start", onStrokeStart);
   socket.on("stroke:segment", onStrokeSegment);
   socket.on("stroke:end", onStrokeEnd);

@@ -3,12 +3,32 @@ const http = require("http");
 const express = require("express");
 const { Server } = require("socket.io");
 const { getRoom } = require("./rooms");
+
 const app = express();
 const server = http.createServer(app);
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5000",
+  process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`,
+  process.env.RAILWAY_PUBLIC_DOMAIN && `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`,
+  process.env.RENDER_EXTERNAL_URL
+].filter(Boolean);
+
 const io = new Server(server, {
   cors: {
-    origin: "*"
-  }
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS not allowed"));
+      }
+    },
+    credentials: true
+  },
+  transports: ["websocket", "polling"],
+  pingInterval: 25000,
+  pingTimeout: 20000
 });
 
 const clientPath = path.join(__dirname, "..", "client");
@@ -19,31 +39,42 @@ app.get("/health", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-  console.log(`Client connected: ${socket.id}`);
+  console.log(`[${new Date().toISOString()}] Client connected: ${socket.id}`);
 
   const roomId = (socket.handshake.query.room || "lobby").toString();
   const room = getRoom(roomId);
   socket.join(roomId);
 
+  // Send initial state to new user
   socket.emit("hello", { userId: socket.id, roomId });
   socket.emit("state", { strokes: room.state.getStrokes() });
 
+  // Notify other users of new connection
+  socket.to(roomId).emit("user:joined", { userId: socket.id });
+
   socket.on("stroke:start", (payload) => {
+    if (!payload || !payload.id || !payload.point) {
+      console.warn("Invalid stroke:start payload", payload);
+      return;
+    }
     room.state.startStroke({
       id: payload.id,
       userId: socket.id,
-      style: payload.style,
+      style: payload.style || { color: "#111111", width: 4 },
       point: payload.point
     });
     socket.to(roomId).emit("stroke:start", {
       id: payload.id,
       userId: socket.id,
-      style: payload.style,
+      style: payload.style || { color: "#111111", width: 4 },
       point: payload.point
     });
   });
 
   socket.on("stroke:segment", (payload) => {
+    if (!payload || !payload.id || !payload.point) {
+      return;
+    }
     room.state.addPoint(payload.id, payload.point);
     socket.to(roomId).emit("stroke:segment", {
       id: payload.id,
@@ -53,6 +84,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("stroke:end", (payload) => {
+    if (!payload || !payload.id) {
+      return;
+    }
     room.state.endStroke(payload.id);
     socket.to(roomId).emit("stroke:end", {
       id: payload.id,
@@ -61,6 +95,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("cursor", (payload) => {
+    if (!payload || typeof payload.x !== "number" || typeof payload.y !== "number") {
+      return;
+    }
     socket.to(roomId).emit("cursor", {
       userId: socket.id,
       x: payload.x,
@@ -69,18 +106,25 @@ io.on("connection", (socket) => {
   });
 
   socket.on("undo", () => {
-    room.state.undoLastByUser(socket.id);
-    io.to(roomId).emit("state", { strokes: room.state.getStrokes() });
+    if (room.state.undoLastByUser(socket.id)) {
+      io.to(roomId).emit("state", { strokes: room.state.getStrokes() });
+    }
   });
 
   socket.on("redo", () => {
-    room.state.redoLastByUser(socket.id);
-    io.to(roomId).emit("state", { strokes: room.state.getStrokes() });
+    if (room.state.redoLastByUser(socket.id)) {
+      io.to(roomId).emit("state", { strokes: room.state.getStrokes() });
+    }
   });
 
-  socket.on("disconnect", () => {
+  socket.on("error", (error) => {
+    console.error(`Socket error for ${socket.id}:`, error);
+  });
+
+  socket.on("disconnect", (reason) => {
+    console.log(`[${new Date().toISOString()}] Client disconnected: ${socket.id} (${reason})`);
     socket.to(roomId).emit("cursor:leave", { userId: socket.id });
-    console.log(`Client disconnected: ${socket.id}`);
+    socket.to(roomId).emit("user:left", { userId: socket.id });
   });
 });
 

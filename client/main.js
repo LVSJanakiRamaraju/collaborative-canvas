@@ -40,16 +40,24 @@ registerSocketHandlers({
   socket,
   onHello: (payload) => {
     userId = payload.userId;
+    console.log(`Connected as user: ${userId}`);
   },
   onState: (payload) => {
-    strokes = payload.strokes || [];
+    strokes = payload.strokes ? JSON.parse(JSON.stringify(payload.strokes)) : [];
     redrawAll(drawCtx, drawCanvas, strokes);
+  },
+  onUserJoined: (payload) => {
+    console.log(`User joined: ${payload.userId}`);
+  },
+  onUserLeft: (payload) => {
+    delete cursors[payload.userId];
+    drawCursor(cursorCtx, cursorCanvas, cursors);
   },
   onStrokeStart: (payload) => {
     const stroke = {
       id: payload.id,
       userId: payload.userId,
-      style: payload.style,
+      style: payload.style || { color: "#111111", width: 4 },
       points: [payload.point]
     };
     strokes.push(stroke);
@@ -57,6 +65,7 @@ registerSocketHandlers({
   onStrokeSegment: (payload) => {
     const stroke = strokes.find((item) => item.id === payload.id);
     if (!stroke) {
+      console.warn(`Segment received for unknown stroke ${payload.id}`);
       return;
     }
     stroke.points.push(payload.point);
@@ -67,7 +76,9 @@ registerSocketHandlers({
       drawSegment(drawCtx, points[0], points[1], stroke.style);
     }
   },
-  onStrokeEnd: () => {},
+  onStrokeEnd: (payload) => {
+    console.log(`Stroke ended: ${payload.id}`);
+  },
   onCursor: (payload) => {
     if (payload.userId === userId) {
       return;
@@ -114,13 +125,22 @@ function handlePointerDown(event) {
 
 let rafId = null;
 let queuedPoint = null;
+let lastCursorEmitTime = 0;
+const CURSOR_THROTTLE_MS = 50;
 
 function handlePointerMove(event) {
   const point = getCanvasCoordinates(event, drawCanvas);
   if (!point) {
     return;
   }
-  socket.emit("cursor", point);
+  
+  // Throttle cursor emissions
+  const now = Date.now();
+  if (now - lastCursorEmitTime > CURSOR_THROTTLE_MS) {
+    socket.emit("cursor", point);
+    lastCursorEmitTime = now;
+  }
+  
   if (!drawing) {
     return;
   }
