@@ -20,6 +20,30 @@ app.get("/health", (req, res) => {
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
+  socket.on("stroke:start", (payload) => {
+    socket.broadcast.emit("stroke:start", {
+      id: payload.id,
+      userId: socket.id,
+      style: payload.style,
+      point: payload.point
+    });
+  });
+
+  socket.on("stroke:segment", (payload) => {
+    socket.broadcast.emit("stroke:segment", {
+      id: payload.id,
+      userId: socket.id,
+      point: payload.point
+    });
+  });
+
+  socket.on("stroke:end", (payload) => {
+    socket.broadcast.emit("stroke:end", {
+      id: payload.id,
+      userId: socket.id
+    });
+  });
+
   socket.on("cursor", (payload) => {
     console.log("cursor", socket.id, payload);
   });
