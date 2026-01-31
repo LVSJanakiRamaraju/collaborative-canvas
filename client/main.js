@@ -4,6 +4,7 @@ import {
   getCanvasCoordinates,
   drawSegment
 } from "./canvas.js";
+import { createSocket } from "./websocket.js";
 
 const drawCanvas = document.getElementById("drawCanvas");
 
@@ -17,6 +18,9 @@ let currentStyle = {
   color: colorPicker.value,
   width: Number(widthRange.value)
 };
+
+const roomId = new URLSearchParams(window.location.search).get("room") || "lobby";
+const socket = createSocket(roomId);
 
 function updateCanvasSize() {
   resizeCanvas(drawCanvas, drawCtx);
@@ -41,6 +45,7 @@ function handlePointerMove(event) {
   if (!point) {
     return;
   }
+  socket.emit("cursor", point);
   if (!drawing) {
     return;
   }
