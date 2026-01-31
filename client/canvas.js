@@ -40,3 +40,22 @@ export function drawSegment(ctx, start, end, style) {
   ctx.lineTo(end.x, end.y);
   ctx.stroke();
 }
+
+export function clearCanvas(ctx, canvas) {
+  ctx.clearRect(0, 0, canvas.width / DPR, canvas.height / DPR);
+}
+
+export function drawCursor(ctx, canvas, cursors) {
+  clearCanvas(ctx, canvas);
+  ctx.save();
+  Object.values(cursors).forEach((cursor) => {
+    if (!cursor) {
+      return;
+    }
+    ctx.fillStyle = cursor.color;
+    ctx.beginPath();
+    ctx.arc(cursor.x, cursor.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}

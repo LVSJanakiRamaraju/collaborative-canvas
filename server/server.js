@@ -45,10 +45,15 @@ io.on("connection", (socket) => {
   });
 
   socket.on("cursor", (payload) => {
-    console.log("cursor", socket.id, payload);
+    socket.broadcast.emit("cursor", {
+      userId: socket.id,
+      x: payload.x,
+      y: payload.y
+    });
   });
 
   socket.on("disconnect", () => {
+    socket.broadcast.emit("cursor:leave", { userId: socket.id });
     console.log(`Client disconnected: ${socket.id}`);
   });
 });

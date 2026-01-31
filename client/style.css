@@ -66,3 +66,7 @@ canvas {
   display: block;
   touch-action: none;
 }
+
+#cursorCanvas {
+  pointer-events: none;
+}

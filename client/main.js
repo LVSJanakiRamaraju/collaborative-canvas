@@ -2,13 +2,16 @@ import {
   setupCanvas,
   resizeCanvas,
   getCanvasCoordinates,
-  drawSegment
+  drawSegment,
+  drawCursor
 } from "./canvas.js";
 import { createSocket, registerSocketHandlers } from "./websocket.js";
 
 const drawCanvas = document.getElementById("drawCanvas");
+const cursorCanvas = document.getElementById("cursorCanvas");
 
 const drawCtx = setupCanvas(drawCanvas);
+const cursorCtx = setupCanvas(cursorCanvas);
 
 const colorPicker = document.getElementById("colorPicker");
 const widthRange = document.getElementById("widthRange");
@@ -21,6 +24,7 @@ let currentStyle = {
 };
 let strokes = [];
 let userId = null;
+const cursors = {};
 
 const roomId = new URLSearchParams(window.location.search).get("room") || "lobby";
 const socket = createSocket(roomId);
@@ -55,11 +59,24 @@ registerSocketHandlers({
       drawSegment(drawCtx, points[points.length - 2], points[points.length - 1], stroke.style);
     }
   },
-  onStrokeEnd: () => {}
+  onStrokeEnd: () => {},
+  onCursor: (payload) => {
+    if (payload.userId === userId) {
+      return;
+    }
+    const existing = cursors[payload.userId] || { color: randomColor(payload.userId) };
+    cursors[payload.userId] = { ...existing, x: payload.x, y: payload.y };
+    drawCursor(cursorCtx, cursorCanvas, cursors);
+  },
+  onCursorLeave: (payload) => {
+    delete cursors[payload.userId];
+    drawCursor(cursorCtx, cursorCanvas, cursors);
+  }
 });
 
 function updateCanvasSize() {
   resizeCanvas(drawCanvas, drawCtx);
+  resizeCanvas(cursorCanvas, cursorCtx);
 }
 
 window.addEventListener("resize", updateCanvasSize);
@@ -130,6 +147,15 @@ function handlePointerUp() {
   }
   currentStroke = null;
   lastPoint = null;
+}
+
+function randomColor(seed) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 55%)`;
 }
 
 drawCanvas.addEventListener("pointerdown", handlePointerDown);
