@@ -73,6 +73,11 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("state", { strokes: room.state.getStrokes() });
   });
 
+  socket.on("redo", () => {
+    room.state.redoLastByUser(socket.id);
+    io.to(roomId).emit("state", { strokes: room.state.getStrokes() });
+  });
+
   socket.on("disconnect", () => {
     socket.to(roomId).emit("cursor:leave", { userId: socket.id });
     console.log(`Client disconnected: ${socket.id}`);

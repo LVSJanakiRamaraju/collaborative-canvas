@@ -17,6 +17,7 @@ const cursorCtx = setupCanvas(cursorCanvas);
 const colorPicker = document.getElementById("colorPicker");
 const widthRange = document.getElementById("widthRange");
 const undoBtn = document.getElementById("undoBtn");
+const redoBtn = document.getElementById("redoBtn");
 let drawing = false;
 let lastPoint = null;
 let currentStroke = null;
@@ -172,6 +173,10 @@ drawCanvas.addEventListener("pointerleave", handlePointerUp);
 
 undoBtn.addEventListener("click", () => {
   socket.emit("undo");
+});
+
+redoBtn.addEventListener("click", () => {
+  socket.emit("redo");
 });
 
 updateCanvasSize();

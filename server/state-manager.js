@@ -2,6 +2,7 @@ class StateManager {
   constructor() {
     this.strokes = [];
     this.inProgress = new Map();
+    this.undoStack = [];
   }
 
   startStroke({ id, userId, style, point }) {
@@ -35,6 +36,7 @@ class StateManager {
     }
     this.inProgress.delete(id);
     this.strokes.push(stroke);
+    this.undoStack = [];
   }
 
   getStrokes() {
@@ -44,7 +46,19 @@ class StateManager {
   undoLastByUser(userId) {
     for (let i = this.strokes.length - 1; i >= 0; i -= 1) {
       if (this.strokes[i].userId === userId) {
-        this.strokes.splice(i, 1);
+        const undoneStroke = this.strokes.splice(i, 1)[0];
+        this.undoStack.push(undoneStroke);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  redoLastByUser(userId) {
+    for (let i = this.undoStack.length - 1; i >= 0; i -= 1) {
+      if (this.undoStack[i].userId === userId) {
+        const redoneStroke = this.undoStack.splice(i, 1)[0];
+        this.strokes.push(redoneStroke);
         return true;
       }
     }
