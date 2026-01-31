@@ -61,8 +61,10 @@ registerSocketHandlers({
     }
     stroke.points.push(payload.point);
     const points = stroke.points;
-    if (points.length >= 2) {
-      drawSegment(drawCtx, points[points.length - 2], points[points.length - 1], stroke.style);
+    if (points.length >= 3) {
+      drawSmoothCurve(drawCtx, points, stroke.style);
+    } else if (points.length === 2) {
+      drawSegment(drawCtx, points[0], points[1], stroke.style);
     }
   },
   onStrokeEnd: () => {},
@@ -132,9 +134,14 @@ function handlePointerMove(event) {
       }
       const nextPoint = queuedPoint;
       queuedPoint = null;
-      drawSegment(drawCtx, lastPoint, nextPoint, currentStyle);
       if (currentStroke) {
         currentStroke.points.push(nextPoint);
+        const points = currentStroke.points;
+        if (points.length >= 3) {
+          drawSmoothCurve(drawCtx, points, currentStyle);
+        } else if (points.length === 2) {
+          drawSegment(drawCtx, points[0], points[1], currentStyle);
+        }
         socket.emit("stroke:segment", {
           id: currentStroke.id,
           point: nextPoint
@@ -164,6 +171,36 @@ function randomColor(seed) {
   }
   const hue = Math.abs(hash) % 360;
   return `hsl(${hue}, 70%, 55%)`;
+}
+
+function drawSmoothCurve(ctx, points, style) {
+  if (points.length < 3) {
+    return;
+  }
+  
+  ctx.strokeStyle = style.color;
+  ctx.lineWidth = style.width;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  
+  const len = points.length;
+  const p0 = points[len - 3];
+  const p1 = points[len - 2];
+  const p2 = points[len - 1];
+  
+  const xc = (p1.x + p2.x) / 2;
+  const yc = (p1.y + p2.y) / 2;
+  
+  ctx.beginPath();
+  if (len === 3) {
+    ctx.moveTo(p0.x, p0.y);
+  } else {
+    const prevXc = (p0.x + p1.x) / 2;
+    const prevYc = (p0.y + p1.y) / 2;
+    ctx.moveTo(prevXc, prevYc);
+  }
+  ctx.quadraticCurveTo(p1.x, p1.y, xc, yc);
+  ctx.stroke();
 }
 
 drawCanvas.addEventListener("pointerdown", handlePointerDown);

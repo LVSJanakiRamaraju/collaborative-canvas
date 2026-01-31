@@ -41,6 +41,26 @@ export function drawSegment(ctx, start, end, style) {
   ctx.stroke();
 }
 
+export function drawSmoothSegment(ctx, p0, p1, p2, style) {
+  if (!p0 || !p1 || !p2) {
+    return;
+  }
+  ctx.strokeStyle = style.color;
+  ctx.lineWidth = style.width;
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  
+  const cp1x = p0.x + (p1.x - p0.x) * 0.5;
+  const cp1y = p0.y + (p1.y - p0.y) * 0.5;
+  const cp2x = p1.x;
+  const cp2y = p1.y;
+  const endx = p1.x + (p2.x - p1.x) * 0.5;
+  const endy = p1.y + (p2.y - p1.y) * 0.5;
+  
+  ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endx, endy);
+  ctx.stroke();
+}
+
 export function clearCanvas(ctx, canvas) {
   ctx.clearRect(0, 0, canvas.width / DPR, canvas.height / DPR);
 }
@@ -67,8 +87,27 @@ export function redrawAll(ctx, canvas, strokes) {
     if (points.length < 2) {
       return;
     }
-    for (let i = 1; i < points.length; i += 1) {
-      drawSegment(ctx, points[i - 1], points[i], stroke.style);
+    
+    ctx.strokeStyle = stroke.style.color;
+    ctx.lineWidth = stroke.style.width;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    
+    if (points.length === 2) {
+      ctx.lineTo(points[1].x, points[1].y);
+    } else {
+      for (let i = 1; i < points.length - 1; i += 1) {
+        const xc = (points[i].x + points[i + 1].x) / 2;
+        const yc = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+      }
+      const last = points[points.length - 1];
+      const prev = points[points.length - 2];
+      ctx.quadraticCurveTo(prev.x, prev.y, last.x, last.y);
     }
+    
+    ctx.stroke();
   });
 }
