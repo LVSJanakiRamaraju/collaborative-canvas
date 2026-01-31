@@ -59,3 +59,16 @@ export function drawCursor(ctx, canvas, cursors) {
   });
   ctx.restore();
 }
+
+export function redrawAll(ctx, canvas, strokes) {
+  clearCanvas(ctx, canvas);
+  strokes.forEach((stroke) => {
+    const points = stroke.points || [];
+    if (points.length < 2) {
+      return;
+    }
+    for (let i = 1; i < points.length; i += 1) {
+      drawSegment(ctx, points[i - 1], points[i], stroke.style);
+    }
+  });
+}

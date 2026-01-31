@@ -3,7 +3,8 @@ import {
   resizeCanvas,
   getCanvasCoordinates,
   drawSegment,
-  drawCursor
+  drawCursor,
+  redrawAll
 } from "./canvas.js";
 import { createSocket, registerSocketHandlers } from "./websocket.js";
 
@@ -15,6 +16,7 @@ const cursorCtx = setupCanvas(cursorCanvas);
 
 const colorPicker = document.getElementById("colorPicker");
 const widthRange = document.getElementById("widthRange");
+const undoBtn = document.getElementById("undoBtn");
 let drawing = false;
 let lastPoint = null;
 let currentStroke = null;
@@ -29,16 +31,19 @@ const cursors = {};
 const roomId = new URLSearchParams(window.location.search).get("room") || "lobby";
 const socket = createSocket(roomId);
 
-socket.on("connect", () => {
-  userId = socket.id;
-});
-
 function nextStrokeId() {
   return `${userId || "anon"}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 registerSocketHandlers({
   socket,
+  onHello: (payload) => {
+    userId = payload.userId;
+  },
+  onState: (payload) => {
+    strokes = payload.strokes || [];
+    redrawAll(drawCtx, drawCanvas, strokes);
+  },
   onStrokeStart: (payload) => {
     const stroke = {
       id: payload.id,
@@ -77,6 +82,8 @@ registerSocketHandlers({
 function updateCanvasSize() {
   resizeCanvas(drawCanvas, drawCtx);
   resizeCanvas(cursorCanvas, cursorCtx);
+  redrawAll(drawCtx, drawCanvas, strokes);
+  drawCursor(cursorCtx, cursorCanvas, cursors);
 }
 
 window.addEventListener("resize", updateCanvasSize);
@@ -162,5 +169,9 @@ drawCanvas.addEventListener("pointerdown", handlePointerDown);
 drawCanvas.addEventListener("pointermove", handlePointerMove, { passive: true });
 drawCanvas.addEventListener("pointerup", handlePointerUp);
 drawCanvas.addEventListener("pointerleave", handlePointerUp);
+
+undoBtn.addEventListener("click", () => {
+  socket.emit("undo");
+});
 
 updateCanvasSize();
