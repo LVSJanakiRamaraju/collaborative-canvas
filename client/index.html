@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Collaborative Canvas</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="toolbar__group">
+        <label class="toolbar__label" for="colorPicker">Color</label>
+        <input id="colorPicker" type="color" value="#111111" />
+      </div>
+      <div class="toolbar__group">
+        <label class="toolbar__label" for="widthRange">Stroke</label>
+        <input id="widthRange" type="range" min="1" max="24" value="4" />
+      </div>
+      <div class="toolbar__hint">Local drawing (Step 1).</div>
+    </header>
+
+    <main class="canvas-wrap">
+      <canvas id="drawCanvas"></canvas>
+    </main>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
