@@ -29,6 +29,11 @@ if (process.env.RENDER_EXTERNAL_URL) {
   console.log("Render URL detected:", process.env.RENDER_EXTERNAL_URL);
 }
 
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+  console.log("Frontend URL detected:", process.env.FRONTEND_URL);
+}
+
 // For development or if running behind a proxy
 if (process.env.NODE_ENV !== 'production') {
   allowedOrigins.push('*');

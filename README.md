@@ -19,6 +19,16 @@ A real-time, multi-user drawing canvas using HTML5 Canvas and Socket.io.
 - Ghost cursors for active users
 - Undo for the current user's last stroke
 
+## Using a Separate Backend (Production)
+If your frontend is hosted on Vercel and the backend is hosted elsewhere (Railway/Render),
+open the frontend with a `backend` query param:
+
+```
+https://your-frontend.vercel.app/?backend=https://your-backend.railway.app
+```
+
+This URL is saved in localStorage for future visits.
+
 ## Scripts
 - `npm run start` - production server
 - `npm run dev` - auto-reload with nodemon

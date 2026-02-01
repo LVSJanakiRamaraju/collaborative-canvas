@@ -1,25 +1,43 @@
+function resolveBackendUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const backendParam = params.get('backend');
+  if (backendParam) {
+    localStorage.setItem('backendUrl', backendParam);
+    return backendParam;
+  }
+
+  const stored = localStorage.getItem('backendUrl');
+  if (stored) {
+    return stored;
+  }
+
+  if (window.__BACKEND_URL__) {
+    return window.__BACKEND_URL__;
+  }
+
+  if (window.location.host.includes('vercel.app')) {
+    return 'https://collaborative-canvas-ti8v.onrender.com';
+  }
+
+  return window.location.origin;
+}
+
 export function createSocket(roomId) {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const host = window.location.host;
   const path = '/socket.io';
-  
-  // Build full URL for explicit connection
-  const url = `${protocol}://${host}`;
-  
+  const backendUrl = resolveBackendUrl();
+
   const socketConfig = {
-    url: url,
     query: { room: roomId },
-    path: path,
+    path,
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     reconnectionAttempts: Infinity,
-    transports: ['websocket', 'polling'],
-    rejectUnauthorized: false
+    transports: ['websocket', 'polling']
   };
-  
-  console.log(`[SOCKET] Connecting to ${url}${path} with room: ${roomId}`);
-  const socket = io(socketConfig);
+
+  console.log(`[SOCKET] Connecting to ${backendUrl}${path} with room: ${roomId}`);
+  const socket = io(backendUrl, socketConfig);
   
   socket.on('connect', () => {
     console.log('[SOCKET] Connected:', socket.id);
