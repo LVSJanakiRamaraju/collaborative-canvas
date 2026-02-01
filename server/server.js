@@ -10,25 +10,60 @@ const server = http.createServer(app);
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5000",
-  process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`,
-  process.env.RAILWAY_PUBLIC_DOMAIN && `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`,
-  process.env.RENDER_EXTERNAL_URL
-].filter(Boolean);
+  "http://127.0.0.1:3000",
+  "https://collaborative-canvas-ochre.vercel.app/"
+];
+
+// Add deployment URLs from environment variables
+if (process.env.VERCEL_URL) {
+  allowedOrigins.push(`https://${process.env.VERCEL_URL}`);
+  allowedOrigins.push(`http://${process.env.VERCEL_URL}`);
+  console.log("Vercel URL detected:", process.env.VERCEL_URL);
+}
+if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+  allowedOrigins.push(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
+  console.log("Railway domain detected:", process.env.RAILWAY_PUBLIC_DOMAIN);
+}
+if (process.env.RENDER_EXTERNAL_URL) {
+  allowedOrigins.push(process.env.RENDER_EXTERNAL_URL);
+  console.log("Render URL detected:", process.env.RENDER_EXTERNAL_URL);
+}
+
+// For development or if running behind a proxy
+if (process.env.NODE_ENV !== 'production') {
+  allowedOrigins.push('*');
+}
+
+console.log("[SERVER] Allowed origins:", allowedOrigins);
 
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      console.log("CORS check for origin:", origin);
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      const cleanOrigin = origin.replace(/\/$/, '');
+      const isAllowed = allowedOrigins.some(allowed => {
+        const cleanAllowed = allowed.replace(/\/$/, '');
+        return cleanOrigin === cleanAllowed || cleanOrigin.includes(cleanAllowed);
+      });
+      
+      if (isAllowed || process.env.NODE_ENV !== 'production') {
         callback(null, true);
       } else {
+        console.warn(`CORS blocked origin: ${origin}`);
         callback(new Error("CORS not allowed"));
       }
     },
-    credentials: true
+    credentials: true,
+    methods: ['GET', 'POST']
   },
   transports: ["websocket", "polling"],
   pingInterval: 25000,
-  pingTimeout: 20000
+  pingTimeout: 20000,
+  maxHttpBufferSize: 1e6
 });
 
 const clientPath = path.join(__dirname, "..", "client");

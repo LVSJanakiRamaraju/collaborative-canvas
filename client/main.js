@@ -32,6 +32,28 @@ const cursors = {};
 const roomId = new URLSearchParams(window.location.search).get("room") || "lobby";
 const socket = createSocket(roomId);
 
+// Add connection state tracking
+let isConnected = false;
+let connectionAttempts = 0;
+
+socket.on('connect', () => {
+  isConnected = true;
+  connectionAttempts = 0;
+  console.log('[APP] Socket connected successfully');
+  document.title = "🎨 Collaborative Canvas - Connected";
+});
+
+socket.on('disconnect', () => {
+  isConnected = false;
+  console.warn('[APP] Socket disconnected');
+  document.title = "🎨 Collaborative Canvas - Reconnecting...";
+});
+
+socket.on('reconnect_attempt', () => {
+  connectionAttempts++;
+  console.log(`[APP] Reconnection attempt ${connectionAttempts}`);
+});
+
 function nextStrokeId() {
   return `${userId || "anon"}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
