@@ -102,13 +102,19 @@ io.on("connection", (socket) => {
       id: payload.id,
       userId: socket.id,
       style: payload.style || { color: "#111111", width: 4 },
-      point: payload.point
+      point: payload.point,
+      type: payload.type,
+      start: payload.start,
+      end: payload.end
     });
     socket.to(roomId).emit("stroke:start", {
       id: payload.id,
       userId: socket.id,
       style: payload.style || { color: "#111111", width: 4 },
-      point: payload.point
+      point: payload.point,
+      type: payload.type,
+      start: payload.start,
+      end: payload.end
     });
   });
 

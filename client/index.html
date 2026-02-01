@@ -19,9 +19,6 @@
           <div class="tool-selector">
             <button id="penTool" class="tool-btn active" title="Pen">✏️</button>
             <button id="eraserTool" class="tool-btn" title="Eraser">🧹</button>
-            <button id="lineTool" class="tool-btn" title="Line">📏</button>
-            <button id="rectTool" class="tool-btn" title="Rectangle">⬜</button>
-            <button id="circleTool" class="tool-btn" title="Circle">⭕</button>
           </div>
         </div>
 
@@ -65,10 +62,6 @@
         <span class="status-label">🔍 Zoom:</span>
         <span id="zoomLevel" class="status-value">100%</span>
       </div>
-      <div class="status-item">
-        <span class="status-label">📍 Position:</span>
-        <span id="canvasPosition" class="status-value">0, 0</span>
-      </div>
       <div class="status-item" id="connectionStatus">
         <span class="status-dot status-dot--connecting"></span>
         <span class="status-text">Connecting...</span>
@@ -85,8 +78,13 @@
         <button id="zoomOutBtn" class="zoom-btn" title="Zoom Out">➖</button>
       </div>
 
+      <div class="minimap" aria-label="Canvas overview">
+        <canvas id="minimapCanvas"></canvas>
+        <div class="minimap__label">Overview</div>
+      </div>
+
       <div class="canvas-hint">
-        💡 <strong>Tip:</strong> Use mouse wheel to zoom, middle-click or Space+drag to pan
+        💡 <strong>Tip:</strong> Use mouse wheel to pan, Ctrl/⌘ + wheel to zoom, middle-click or Space+drag to pan
       </div>
     </main>
 

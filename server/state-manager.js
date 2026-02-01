@@ -5,7 +5,7 @@ class StateManager {
     this.undoStack = [];
   }
 
-  startStroke({ id, userId, style, point }) {
+  startStroke({ id, userId, style, point, type, start, end }) {
     if (!id || !point) {
       return;
     }
@@ -14,10 +14,16 @@ class StateManager {
       userId,
       style: {
         color: style?.color || "#111111",
-        width: Number(style?.width || 4)
+        width: Number(style?.width || 4),
+        opacity: Number(style?.opacity || 100)
       },
       points: [point]
     };
+    if (type) {
+      stroke.type = type;
+      stroke.start = start;
+      stroke.end = end;
+    }
     this.inProgress.set(id, stroke);
   }
 
@@ -40,7 +46,8 @@ class StateManager {
   }
 
   getStrokes() {
-    return this.strokes.slice();
+    // Return a deep copy to preserve all properties including shape metadata
+    return JSON.parse(JSON.stringify(this.strokes));
   }
 
   undoLastByUser(userId) {

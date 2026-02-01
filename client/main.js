@@ -16,6 +16,13 @@ const drawCanvas = document.getElementById("drawCanvas");
 const cursorCanvas = document.getElementById("cursorCanvas");
 const drawCtx = setupCanvas(drawCanvas);
 const cursorCtx = setupCanvas(cursorCanvas);
+const minimapCanvas = document.getElementById("minimapCanvas");
+const minimapCtx = minimapCanvas ? minimapCanvas.getContext("2d") : null;
+const MINIMAP_PADDING = 8;
+const MINIMAP_DPR = window.devicePixelRatio || 1;
+let minimapTransform = null;
+let minimapDragging = false;
+let minimapRaf = null;
 
 // UI Elements
 const colorPicker = document.getElementById("colorPicker");
@@ -32,15 +39,12 @@ const zoomOutBtn = document.getElementById("zoomOutBtn");
 const zoomResetBtn = document.getElementById("zoomResetBtn");
 const userCount = document.getElementById("userCount");
 const zoomLevel = document.getElementById("zoomLevel");
-const canvasPosition = document.getElementById("canvasPosition");
+
 const connectionStatus = document.getElementById("connectionStatus");
 
 // Tool buttons
 const penTool = document.getElementById("penTool");
 const eraserTool = document.getElementById("eraserTool");
-const lineTool = document.getElementById("lineTool");
-const rectTool = document.getElementById("rectTool");
-const circleTool = document.getElementById("circleTool");
 
 // Color presets
 const colorPresets = document.querySelectorAll(".color-preset");
@@ -108,7 +112,14 @@ registerSocketHandlers({
   },
   onState: (payload) => {
     strokes = payload.strokes ? JSON.parse(JSON.stringify(payload.strokes)) : [];
+    console.log('[APP] State received with', strokes.length, 'strokes');
+    strokes.forEach((s, i) => {
+      if (s.type) {
+        console.log(`  [${i}] Shape type=${s.type}, start=`, s.start, 'end=', s.end);
+      }
+    });
     redrawAll(drawCtx, drawCanvas, strokes);
+    scheduleMinimapUpdate();
   },
   onUserJoined: (payload) => {
     connectedUsers.add(payload.userId);
@@ -143,12 +154,21 @@ registerSocketHandlers({
       return;
     }
     stroke.points.push(payload.point);
+    
+    // For shapes, redraw all to use drawShape instead of drawing as curve
+    if (stroke.type) {
+      redrawAll(drawCtx, drawCanvas, strokes);
+      scheduleMinimapUpdate();
+      return;
+    }
+    
     const points = stroke.points;
     if (points.length >= 3) {
       drawSmoothCurve(drawCtx, points, stroke.style);
     } else if (points.length === 2) {
       drawSegment(drawCtx, points[0], points[1], stroke.style);
     }
+    scheduleMinimapUpdate();
   },
   onStrokeEnd: (payload) => {
     console.log(`Stroke ended: ${payload.id}`);
@@ -174,31 +194,277 @@ function updateUserCount() {
 function updateZoomDisplay() {
   const viewport = getViewport();
   zoomLevel.textContent = `${Math.round(viewport.scale * 100)}%`;
-  canvasPosition.textContent = `${Math.round(viewport.offsetX)}, ${Math.round(viewport.offsetY)}`;
+}
+
+function resizeMinimapCanvas() {
+  if (!minimapCanvas || !minimapCtx) return;
+  const rect = minimapCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  minimapCanvas.width = Math.floor(rect.width * MINIMAP_DPR);
+  minimapCanvas.height = Math.floor(rect.height * MINIMAP_DPR);
+  minimapCtx.setTransform(MINIMAP_DPR, 0, 0, MINIMAP_DPR, 0, 0);
+}
+
+function getViewportWorldRect() {
+  const viewport = getViewport();
+  const rect = drawCanvas.getBoundingClientRect();
+  const width = rect.width / viewport.scale;
+  const height = rect.height / viewport.scale;
+  const x = -viewport.offsetX / viewport.scale;
+  const y = -viewport.offsetY / viewport.scale;
+  return { x, y, width, height };
+}
+
+function mergeBounds(bounds, next) {
+  if (!next) return bounds;
+  if (!bounds) return { ...next };
+  return {
+    minX: Math.min(bounds.minX, next.minX),
+    minY: Math.min(bounds.minY, next.minY),
+    maxX: Math.max(bounds.maxX, next.maxX),
+    maxY: Math.max(bounds.maxY, next.maxY)
+  };
+}
+
+function getStrokeBounds(stroke) {
+  if (stroke.type && stroke.start && stroke.end) {
+    if (stroke.type === 'circle') {
+      const radius = Math.hypot(stroke.end.x - stroke.start.x, stroke.end.y - stroke.start.y);
+      return {
+        minX: stroke.start.x - radius,
+        minY: stroke.start.y - radius,
+        maxX: stroke.start.x + radius,
+        maxY: stroke.start.y + radius
+      };
+    }
+    const minX = Math.min(stroke.start.x, stroke.end.x);
+    const minY = Math.min(stroke.start.y, stroke.end.y);
+    const maxX = Math.max(stroke.start.x, stroke.end.x);
+    const maxY = Math.max(stroke.start.y, stroke.end.y);
+    return { minX, minY, maxX, maxY };
+  }
+
+  const points = stroke.points || [];
+  if (!points.length) return null;
+  let minX = points[0].x;
+  let minY = points[0].y;
+  let maxX = points[0].x;
+  let maxY = points[0].y;
+  for (let i = 1; i < points.length; i += 1) {
+    const point = points[i];
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function getWorldBounds() {
+  let bounds = null;
+  strokes.forEach((stroke) => {
+    bounds = mergeBounds(bounds, getStrokeBounds(stroke));
+  });
+
+  const view = getViewportWorldRect();
+  bounds = mergeBounds(bounds, {
+    minX: view.x,
+    minY: view.y,
+    maxX: view.x + view.width,
+    maxY: view.y + view.height
+  });
+
+  if (!bounds) {
+    return { minX: -500, minY: -500, maxX: 500, maxY: 500 };
+  }
+
+  const width = bounds.maxX - bounds.minX || 1;
+  const height = bounds.maxY - bounds.minY || 1;
+  const pad = Math.max(100, Math.max(width, height) * 0.1);
+  return {
+    minX: bounds.minX - pad,
+    minY: bounds.minY - pad,
+    maxX: bounds.maxX + pad,
+    maxY: bounds.maxY + pad
+  };
+}
+
+function scheduleMinimapUpdate() {
+  if (!minimapCtx) return;
+  if (minimapRaf) return;
+  minimapRaf = requestAnimationFrame(() => {
+    minimapRaf = null;
+    drawMinimap();
+  });
+}
+
+function drawMinimap() {
+  if (!minimapCanvas || !minimapCtx) return;
+  const rect = minimapCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const ctx = minimapCtx;
+  const width = rect.width;
+  const height = rect.height;
+  ctx.setTransform(MINIMAP_DPR, 0, 0, MINIMAP_DPR, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = 'rgba(12, 15, 21, 0.9)';
+  ctx.fillRect(0, 0, width, height);
+
+  const bounds = getWorldBounds();
+  const worldWidth = bounds.maxX - bounds.minX || 1;
+  const worldHeight = bounds.maxY - bounds.minY || 1;
+  const scale = Math.min(
+    (width - MINIMAP_PADDING * 2) / worldWidth,
+    (height - MINIMAP_PADDING * 2) / worldHeight
+  );
+  const offsetX = MINIMAP_PADDING - bounds.minX * scale;
+  const offsetY = MINIMAP_PADDING - bounds.minY * scale;
+  minimapTransform = { scale, offsetX, offsetY, bounds };
+
+  const toMini = (point) => ({
+    x: point.x * scale + offsetX,
+    y: point.y * scale + offsetY
+  });
+
+  strokes.forEach((stroke) => {
+    const style = stroke.style || { color: '#ffffff', width: 2, opacity: 100 };
+    ctx.globalAlpha = (style.opacity || 100) / 100;
+    ctx.strokeStyle = style.color || '#ffffff';
+    ctx.lineWidth = Math.max(1, style.width * scale);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (stroke.type && stroke.start && stroke.end) {
+      if (stroke.type === 'circle') {
+        const radius = Math.hypot(stroke.end.x - stroke.start.x, stroke.end.y - stroke.start.y);
+        const center = toMini(stroke.start);
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, radius * scale, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (stroke.type === 'rectangle') {
+        const start = toMini(stroke.start);
+        const end = toMini(stroke.end);
+        ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+      } else if (stroke.type === 'line') {
+        const start = toMini(stroke.start);
+        const end = toMini(stroke.end);
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    const points = stroke.points || [];
+    if (points.length < 2) {
+      ctx.globalAlpha = 1;
+      return;
+    }
+    const first = toMini(points[0]);
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+    for (let i = 1; i < points.length; i += 1) {
+      const next = toMini(points[i]);
+      ctx.lineTo(next.x, next.y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  const view = getViewportWorldRect();
+  const viewStart = { x: view.x, y: view.y };
+  const viewEnd = { x: view.x + view.width, y: view.y + view.height };
+  const miniStart = toMini(viewStart);
+  const miniEnd = toMini(viewEnd);
+  ctx.strokeStyle = 'rgba(31, 111, 235, 0.9)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(
+    miniStart.x,
+    miniStart.y,
+    miniEnd.x - miniStart.x,
+    miniEnd.y - miniStart.y
+  );
+}
+
+function centerViewportOnWorldPoint(point) {
+  if (!point) return;
+  const viewport = getViewport();
+  const rect = drawCanvas.getBoundingClientRect();
+  const offsetX = rect.width / 2 / viewport.scale - point.x;
+  const offsetY = rect.height / 2 / viewport.scale - point.y;
+  setViewport({ offsetX, offsetY });
+  updateCanvasSize();
+  updateZoomDisplay();
+}
+
+function getWorldPointFromMinimapEvent(event) {
+  if (!minimapCanvas || !minimapTransform) return null;
+  const rect = minimapCanvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  return {
+    x: (x - minimapTransform.offsetX) / minimapTransform.scale,
+    y: (y - minimapTransform.offsetY) / minimapTransform.scale
+  };
+}
+
+function handleMinimapPointer(event) {
+  const point = getWorldPointFromMinimapEvent(event);
+  centerViewportOnWorldPoint(point);
 }
 
 function updateCanvasSize() {
   resizeCanvas(drawCanvas, drawCtx);
   resizeCanvas(cursorCanvas, cursorCtx);
+  resizeMinimapCanvas();
   redrawAll(drawCtx, drawCanvas, strokes);
   drawCursor(cursorCtx, cursorCanvas, cursors);
+  scheduleMinimapUpdate();
 }
 
 window.addEventListener("resize", updateCanvasSize);
 
+if (minimapCanvas) {
+  minimapCanvas.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    minimapDragging = true;
+    minimapCanvas.setPointerCapture(event.pointerId);
+    handleMinimapPointer(event);
+  });
+
+  minimapCanvas.addEventListener("pointermove", (event) => {
+    if (!minimapDragging) return;
+    event.preventDefault();
+    handleMinimapPointer(event);
+  });
+
+  minimapCanvas.addEventListener("pointerup", (event) => {
+    minimapDragging = false;
+    try {
+      minimapCanvas.releasePointerCapture(event.pointerId);
+    } catch (err) {
+      // ignore
+    }
+  });
+
+  minimapCanvas.addEventListener("pointerleave", () => {
+    minimapDragging = false;
+  });
+}
+
 // Tool selection
 function selectTool(tool) {
   currentTool = tool;
-  [penTool, eraserTool, lineTool, rectTool, circleTool].forEach(btn => {
+  [penTool, eraserTool].forEach(btn => {
     btn.classList.remove('active');
   });
   
   switch(tool) {
     case 'pen': penTool.classList.add('active'); break;
     case 'eraser': eraserTool.classList.add('active'); break;
-    case 'line': lineTool.classList.add('active'); break;
-    case 'rectangle': rectTool.classList.add('active'); break;
-    case 'circle': circleTool.classList.add('active'); break;
   }
   
   drawCanvas.style.cursor = tool === 'eraser' ? 'crosshair' : 'crosshair';
@@ -206,9 +472,6 @@ function selectTool(tool) {
 
 penTool.addEventListener('click', () => selectTool('pen'));
 eraserTool.addEventListener('click', () => selectTool('eraser'));
-lineTool.addEventListener('click', () => selectTool('line'));
-rectTool.addEventListener('click', () => selectTool('rectangle'));
-circleTool.addEventListener('click', () => selectTool('circle'));
 
 // Color presets
 colorPresets.forEach(preset => {
@@ -241,6 +504,7 @@ zoomInBtn.addEventListener('click', () => {
   setViewport({ scale: newScale });
   updateCanvasSize();
   updateZoomDisplay();
+  scheduleMinimapUpdate();
 });
 
 zoomOutBtn.addEventListener('click', () => {
@@ -249,23 +513,50 @@ zoomOutBtn.addEventListener('click', () => {
   setViewport({ scale: newScale });
   updateCanvasSize();
   updateZoomDisplay();
+  scheduleMinimapUpdate();
 });
 
 zoomResetBtn.addEventListener('click', () => {
   setViewport({ offsetX: 0, offsetY: 0, scale: 1 });
   updateCanvasSize();
   updateZoomDisplay();
+  scheduleMinimapUpdate();
 });
 
-// Mouse wheel zoom
+function zoomAtClientPoint(clientX, clientY, newScale) {
+  const rect = drawCanvas.getBoundingClientRect();
+  const viewport = getViewport();
+  const worldX = (clientX - rect.left) / viewport.scale - viewport.offsetX;
+  const worldY = (clientY - rect.top) / viewport.scale - viewport.offsetY;
+  const nextOffsetX = (clientX - rect.left) / newScale - worldX;
+  const nextOffsetY = (clientY - rect.top) / newScale - worldY;
+  setViewport({ scale: newScale, offsetX: nextOffsetX, offsetY: nextOffsetY });
+}
+
+// Mouse wheel: pan by default, zoom when Ctrl/Meta is pressed (trackpad pinch)
 drawCanvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   const viewport = getViewport();
-  const delta = e.deltaY > 0 ? 0.9 : 1.1;
-  const newScale = Math.min(Math.max(viewport.scale * delta, 0.1), 5);
-  setViewport({ scale: newScale });
+
+  if (e.ctrlKey || e.metaKey) {
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.min(Math.max(viewport.scale * delta, 0.1), 5);
+    zoomAtClientPoint(e.clientX, e.clientY, newScale);
+    updateCanvasSize();
+    updateZoomDisplay();
+    scheduleMinimapUpdate();
+    return;
+  }
+
+  const dx = e.deltaX / viewport.scale;
+  const dy = e.deltaY / viewport.scale;
+  setViewport({
+    offsetX: viewport.offsetX - dx,
+    offsetY: viewport.offsetY - dy
+  });
   updateCanvasSize();
   updateZoomDisplay();
+  scheduleMinimapUpdate();
 }, { passive: false });
 
 // Drawing functions
@@ -290,28 +581,18 @@ function handlePointerDown(event) {
     opacity: Number(opacityRange.value)
   };
   
-  if (currentTool === 'pen' || currentTool === 'eraser') {
-    currentStroke = {
-      id: nextStrokeId(),
-      userId,
-      style: currentStyle,
-      points: [lastPoint]
-    };
-    strokes.push(currentStroke);
-    socket.emit("stroke:start", {
-      id: currentStroke.id,
-      style: currentStyle,
-      point: lastPoint
-    });
-  } else {
-    // Shape tools
-    tempShape = {
-      type: currentTool,
-      start: point,
-      end: point,
-      style: currentStyle
-    };
-  }
+  currentStroke = {
+    id: nextStrokeId(),
+    userId,
+    style: currentStyle,
+    points: [lastPoint]
+  };
+  strokes.push(currentStroke);
+  socket.emit("stroke:start", {
+    id: currentStroke.id,
+    style: currentStyle,
+    point: lastPoint
+  });
 }
 
 let rafId = null;
@@ -329,12 +610,13 @@ function handlePointerMove(event) {
     const dx = (event.clientX - panStart.x) / viewport.scale;
     const dy = (event.clientY - panStart.y) / viewport.scale;
     setViewport({
-      offsetX: viewport.offsetX + dx,
-      offsetY: viewport.offsetY + dy
+      offsetX: viewport.offsetX - dx,
+      offsetY: viewport.offsetY - dy
     });
     panStart = { x: event.clientX, y: event.clientY };
     updateCanvasSize();
     updateZoomDisplay();
+    scheduleMinimapUpdate();
     return;
   }
   
@@ -347,37 +629,31 @@ function handlePointerMove(event) {
   
   if (!drawing) return;
   
-  if (currentTool === 'pen' || currentTool === 'eraser') {
-    queuedPoint = point;
-    if (!rafId) {
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        if (!queuedPoint) return;
-        
-        const nextPoint = queuedPoint;
-        queuedPoint = null;
-        
-        if (currentStroke) {
-          currentStroke.points.push(nextPoint);
-          const points = currentStroke.points;
-          if (points.length >= 3) {
-            drawSmoothCurve(drawCtx, points, currentStyle);
-          } else if (points.length === 2) {
-            drawSegment(drawCtx, points[0], points[1], currentStyle);
-          }
-          socket.emit("stroke:segment", {
-            id: currentStroke.id,
-            point: nextPoint
-          });
+  queuedPoint = point;
+  if (!rafId) {
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      if (!queuedPoint) return;
+      
+      const nextPoint = queuedPoint;
+      queuedPoint = null;
+      
+      if (currentStroke) {
+        currentStroke.points.push(nextPoint);
+        const points = currentStroke.points;
+        if (points.length >= 3) {
+          drawSmoothCurve(drawCtx, points, currentStyle);
+        } else if (points.length === 2) {
+          drawSegment(drawCtx, points[0], points[1], currentStyle);
         }
-        lastPoint = nextPoint;
-      });
-    }
-  } else if (tempShape) {
-    // Update shape preview
-    tempShape.end = point;
-    redrawAll(drawCtx, drawCanvas, strokes);
-    drawShape(drawCtx, tempShape);
+        scheduleMinimapUpdate();
+        socket.emit("stroke:segment", {
+          id: currentStroke.id,
+          point: nextPoint
+        });
+      }
+      lastPoint = nextPoint;
+    });
   }
 }
 
@@ -393,72 +669,12 @@ function handlePointerUp() {
   
   drawing = false;
   
-  if (currentTool === 'pen' || currentTool === 'eraser') {
-    if (currentStroke) {
-      socket.emit("stroke:end", { id: currentStroke.id });
-    }
-    currentStroke = null;
-  } else if (tempShape) {
-    // Convert shape to stroke
-    const shapeStroke = {
-      id: nextStrokeId(),
-      userId,
-      style: tempShape.style,
-      type: tempShape.type,
-      start: tempShape.start,
-      end: tempShape.end,
-      points: generateShapePoints(tempShape)
-    };
-    strokes.push(shapeStroke);
-    socket.emit("stroke:start", {
-      id: shapeStroke.id,
-      style: shapeStroke.style,
-      type: shapeStroke.type,
-      start: shapeStroke.start,
-      end: shapeStroke.end,
-      point: shapeStroke.points[0]
-    });
-    for (let i = 1; i < shapeStroke.points.length; i++) {
-      socket.emit("stroke:segment", {
-        id: shapeStroke.id,
-        point: shapeStroke.points[i]
-      });
-    }
-    socket.emit("stroke:end", { id: shapeStroke.id });
-    tempShape = null;
-    redrawAll(drawCtx, drawCanvas, strokes);
+  if (currentStroke) {
+    socket.emit("stroke:end", { id: currentStroke.id });
   }
+  currentStroke = null;
   
   lastPoint = null;
-}
-
-function generateShapePoints(shape) {
-  const points = [];
-  if (shape.type === 'line') {
-    points.push(shape.start, shape.end);
-  } else if (shape.type === 'rectangle') {
-    points.push(
-      { x: shape.start.x, y: shape.start.y },
-      { x: shape.end.x, y: shape.start.y },
-      { x: shape.end.x, y: shape.end.y },
-      { x: shape.start.x, y: shape.end.y },
-      { x: shape.start.x, y: shape.start.y }
-    );
-  } else if (shape.type === 'circle') {
-    const radius = Math.sqrt(
-      Math.pow(shape.end.x - shape.start.x, 2) +
-      Math.pow(shape.end.y - shape.start.y, 2)
-    );
-    const segments = 32;
-    for (let i = 0; i <= segments; i++) {
-      const angle = (i / segments) * Math.PI * 2;
-      points.push({
-        x: shape.start.x + Math.cos(angle) * radius,
-        y: shape.start.y + Math.sin(angle) * radius
-      });
-    }
-  }
-  return points;
 }
 
 function randomColor(seed) {
@@ -520,6 +736,7 @@ clearBtn.addEventListener("click", () => {
     strokes = [];
     socket.emit("clear");
     redrawAll(drawCtx, drawCanvas, strokes);
+    scheduleMinimapUpdate();
   }
 });
 
@@ -547,9 +764,6 @@ document.addEventListener('keydown', (e) => {
     switch(e.key) {
       case 'p': selectTool('pen'); break;
       case 'e': selectTool('eraser'); break;
-      case 'l': selectTool('line'); break;
-      case 'r': selectTool('rectangle'); break;
-      case 'c': selectTool('circle'); break;
     }
   }
 });

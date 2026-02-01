@@ -107,7 +107,7 @@ export function redrawAll(ctx, canvas, strokes) {
   clearCanvas(ctx, canvas);
   strokes.forEach((stroke) => {
     // If stroke has a type (line, rectangle, circle), use drawShape
-    if (stroke.type) {
+    if (stroke.type && stroke.start && stroke.end) {
       drawShape(ctx, stroke);
       return;
     }
