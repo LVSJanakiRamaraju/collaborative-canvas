@@ -1,5 +1,20 @@
 const DPR = window.devicePixelRatio || 1;
 
+// Viewport state for infinite canvas
+let viewport = {
+  offsetX: 0,
+  offsetY: 0,
+  scale: 1
+};
+
+export function getViewport() {
+  return { ...viewport };
+}
+
+export function setViewport(newViewport) {
+  viewport = { ...viewport, ...newViewport };
+}
+
 export function setupCanvas(canvas) {
   const ctx = canvas.getContext("2d", { willReadFrequently: false });
   resizeCanvas(canvas, ctx);
@@ -12,21 +27,25 @@ export function resizeCanvas(canvas, ctx) {
   const { width, height } = canvas.getBoundingClientRect();
   canvas.width = Math.floor(width * DPR);
   canvas.height = Math.floor(height * DPR);
+  applyTransform(ctx);
+}
+
+function applyTransform(ctx) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.scale(DPR, DPR);
+  ctx.translate(viewport.offsetX, viewport.offsetY);
+  ctx.scale(viewport.scale, viewport.scale);
 }
 
 export function getCanvasCoordinates(event, canvas) {
   const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
   const clientX = event.clientX ?? event.touches?.[0]?.clientX;
   const clientY = event.clientY ?? event.touches?.[0]?.clientY;
 
-  return {
-    x: (clientX - rect.left) * scaleX / DPR,
-    y: (clientY - rect.top) * scaleY / DPR
-  };
+  const x = (clientX - rect.left) / viewport.scale - viewport.offsetX;
+  const y = (clientY - rect.top) / viewport.scale - viewport.offsetY;
+
+  return { x, y };
 }
 
 export function drawSegment(ctx, start, end, style) {
@@ -62,7 +81,11 @@ export function drawSmoothSegment(ctx, p0, p1, p2, style) {
 }
 
 export function clearCanvas(ctx, canvas) {
-  ctx.clearRect(0, 0, canvas.width / DPR, canvas.height / DPR);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+  applyTransform(ctx);
 }
 
 export function drawCursor(ctx, canvas, cursors) {
@@ -74,7 +97,7 @@ export function drawCursor(ctx, canvas, cursors) {
     }
     ctx.fillStyle = cursor.color;
     ctx.beginPath();
-    ctx.arc(cursor.x, cursor.y, 5, 0, Math.PI * 2);
+    ctx.arc(cursor.x, cursor.y, 5 / viewport.scale, 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.restore();
@@ -88,6 +111,7 @@ export function redrawAll(ctx, canvas, strokes) {
       return;
     }
     
+    ctx.globalAlpha = (stroke.style.opacity || 100) / 100;
     ctx.strokeStyle = stroke.style.color;
     ctx.lineWidth = stroke.style.width;
     ctx.lineCap = "round";
@@ -109,5 +133,36 @@ export function redrawAll(ctx, canvas, strokes) {
     }
     
     ctx.stroke();
+    ctx.globalAlpha = 1;
   });
+}
+
+export function drawShape(ctx, shape) {
+  ctx.globalAlpha = (shape.style.opacity || 100) / 100;
+  ctx.strokeStyle = shape.style.color;
+  ctx.lineWidth = shape.style.width;
+  
+  if (shape.type === 'line') {
+    ctx.beginPath();
+    ctx.moveTo(shape.start.x, shape.start.y);
+    ctx.lineTo(shape.end.x, shape.end.y);
+    ctx.stroke();
+  } else if (shape.type === 'rectangle') {
+    ctx.strokeRect(
+      shape.start.x,
+      shape.start.y,
+      shape.end.x - shape.start.x,
+      shape.end.y - shape.start.y
+    );
+  } else if (shape.type === 'circle') {
+    const radius = Math.sqrt(
+      Math.pow(shape.end.x - shape.start.x, 2) +
+      Math.pow(shape.end.y - shape.start.y, 2)
+    );
+    ctx.beginPath();
+    ctx.arc(shape.start.x, shape.start.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  ctx.globalAlpha = 1;
 }

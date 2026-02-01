@@ -3,27 +3,91 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Collaborative Canvas</title>
+    <title>🎨 Collaborative Canvas</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="toolbar">
-      <div class="toolbar__group">
-        <label class="toolbar__label" for="colorPicker">Color</label>
-        <input id="colorPicker" type="color" value="#111111" />
+      <div class="toolbar__section">
+        <div class="toolbar__brand">
+          <span class="toolbar__icon">🎨</span>
+          <span class="toolbar__title">Collaborative Canvas</span>
+        </div>
+        
+        <div class="toolbar__group">
+          <label class="toolbar__label">Tool</label>
+          <div class="tool-selector">
+            <button id="penTool" class="tool-btn active" title="Pen">✏️</button>
+            <button id="eraserTool" class="tool-btn" title="Eraser">🧹</button>
+            <button id="lineTool" class="tool-btn" title="Line">📏</button>
+            <button id="rectTool" class="tool-btn" title="Rectangle">⬜</button>
+            <button id="circleTool" class="tool-btn" title="Circle">⭕</button>
+          </div>
+        </div>
+
+        <div class="toolbar__group">
+          <label class="toolbar__label" for="colorPicker">Color</label>
+          <input id="colorPicker" type="color" value="#111111" />
+          <div class="color-presets">
+            <button class="color-preset" data-color="#000000" style="background: #000000"></button>
+            <button class="color-preset" data-color="#ff0000" style="background: #ff0000"></button>
+            <button class="color-preset" data-color="#00ff00" style="background: #00ff00"></button>
+            <button class="color-preset" data-color="#0000ff" style="background: #0000ff"></button>
+            <button class="color-preset" data-color="#ffff00" style="background: #ffff00"></button>
+          </div>
+        </div>
+
+        <div class="toolbar__group">
+          <label class="toolbar__label" for="widthRange">Size: <span id="widthValue">4</span>px</label>
+          <input id="widthRange" type="range" min="1" max="32" value="4" />
+        </div>
+
+        <div class="toolbar__group">
+          <label class="toolbar__label" for="opacityRange">Opacity: <span id="opacityValue">100</span>%</label>
+          <input id="opacityRange" type="range" min="10" max="100" value="100" />
+        </div>
       </div>
-      <div class="toolbar__group">
-        <label class="toolbar__label" for="widthRange">Stroke</label>
-        <input id="widthRange" type="range" min="1" max="24" value="4" />
+
+      <div class="toolbar__section">
+        <button id="undoBtn" class="toolbar__button">↩️ Undo</button>
+        <button id="redoBtn" class="toolbar__button">↪️ Redo</button>
+        <button id="clearBtn" class="toolbar__button toolbar__button--danger">🗑️ Clear</button>
+        <button id="saveBtn" class="toolbar__button toolbar__button--success">💾 Save</button>
       </div>
-      <button id="undoBtn" class="toolbar__button">Undo</button>
-      <button id="redoBtn" class="toolbar__button">Redo</button>
-      <div class="toolbar__hint">Global undo enabled (Step 5).</div>
     </header>
+
+    <div class="status-bar">
+      <div class="status-item">
+        <span class="status-label">👥 Users:</span>
+        <span id="userCount" class="status-value">1</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">🔍 Zoom:</span>
+        <span id="zoomLevel" class="status-value">100%</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">📍 Position:</span>
+        <span id="canvasPosition" class="status-value">0, 0</span>
+      </div>
+      <div class="status-item" id="connectionStatus">
+        <span class="status-dot status-dot--connecting"></span>
+        <span class="status-text">Connecting...</span>
+      </div>
+    </div>
 
     <main class="canvas-wrap">
       <canvas id="drawCanvas"></canvas>
       <canvas id="cursorCanvas"></canvas>
+      
+      <div class="zoom-controls">
+        <button id="zoomInBtn" class="zoom-btn" title="Zoom In">➕</button>
+        <button id="zoomResetBtn" class="zoom-btn" title="Reset Zoom">🔄</button>
+        <button id="zoomOutBtn" class="zoom-btn" title="Zoom Out">➖</button>
+      </div>
+
+      <div class="canvas-hint">
+        💡 <strong>Tip:</strong> Use mouse wheel to zoom, middle-click or Space+drag to pan
+      </div>
     </main>
 
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
