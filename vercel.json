@@ -1,27 +1,10 @@
 {
-  "version": 2,
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "builds": [
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
     {
-      "src": "server/server.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxLambdaSize": "50mb",
-        "includeFiles": "client/**"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/socket.io(.*)",
-      "dest": "server/server.js",
-      "methods": ["GET", "POST", "CONNECT"]
-    },
-    {
-      "src": "/(.*)",
-      "dest": "server/server.js"
+      "source": "/(.*)",
+      "destination": "/client/$1"
     }
   ]
 }
