@@ -106,6 +106,12 @@ export function drawCursor(ctx, canvas, cursors) {
 export function redrawAll(ctx, canvas, strokes) {
   clearCanvas(ctx, canvas);
   strokes.forEach((stroke) => {
+    // If stroke has a type (line, rectangle, circle), use drawShape
+    if (stroke.type) {
+      drawShape(ctx, stroke);
+      return;
+    }
+    
     const points = stroke.points || [];
     if (points.length < 2) {
       return;

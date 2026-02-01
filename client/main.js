@@ -128,6 +128,12 @@ registerSocketHandlers({
       style: payload.style || { color: "#111111", width: 4, opacity: 100 },
       points: [payload.point]
     };
+    // Preserve shape properties if this is a shape stroke
+    if (payload.type) {
+      stroke.type = payload.type;
+      stroke.start = payload.start;
+      stroke.end = payload.end;
+    }
     strokes.push(stroke);
   },
   onStrokeSegment: (payload) => {
@@ -398,13 +404,18 @@ function handlePointerUp() {
       id: nextStrokeId(),
       userId,
       style: tempShape.style,
-      points: generateShapePoints(tempShape),
-      type: tempShape.type
+      type: tempShape.type,
+      start: tempShape.start,
+      end: tempShape.end,
+      points: generateShapePoints(tempShape)
     };
     strokes.push(shapeStroke);
     socket.emit("stroke:start", {
       id: shapeStroke.id,
       style: shapeStroke.style,
+      type: shapeStroke.type,
+      start: shapeStroke.start,
+      end: shapeStroke.end,
       point: shapeStroke.points[0]
     });
     for (let i = 1; i < shapeStroke.points.length; i++) {
