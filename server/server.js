@@ -85,12 +85,23 @@ io.on("connection", (socket) => {
   const roomId = (socket.handshake.query.room || "lobby").toString();
   const room = getRoom(roomId);
   socket.join(roomId);
+  
+  let userUsername = null;
 
   // Send initial state to new user
   socket.emit("hello", { userId: socket.id, roomId });
   socket.emit("state", { strokes: room.state.getStrokes() });
 
-  // Notify other users of new connection
+  // Handle username setting
+  socket.on("user:setname", (payload) => {
+    if (payload && payload.username) {
+      userUsername = payload.username;
+      // Notify other users about this user with their username
+      socket.to(roomId).emit("user:joined", { userId: socket.id, username: userUsername });
+    }
+  });
+
+  // Notify other users of new connection (without username initially)
   socket.to(roomId).emit("user:joined", { userId: socket.id });
 
   socket.on("stroke:start", (payload) => {
@@ -148,7 +159,8 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("cursor", {
       userId: socket.id,
       x: payload.x,
-      y: payload.y
+      y: payload.y,
+      username: payload.username
     });
   });
 

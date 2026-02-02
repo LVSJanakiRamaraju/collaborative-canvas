@@ -64,8 +64,26 @@ let currentStyle = {
 };
 let strokes = [];
 let userId = null;
+let username = null;
 const cursors = {};
 let connectedUsers = new Set();
+
+// Ask for username
+function getUsername() {
+  let name = localStorage.getItem('canvasUsername');
+  if (!name) {
+    name = prompt('Enter your name:', 'User');
+    if (name && name.trim()) {
+      name = name.trim().substring(0, 20);
+      localStorage.setItem('canvasUsername', name);
+    } else {
+      name = 'User';
+    }
+  }
+  return name;
+}
+
+username = getUsername();
 
 // Socket setup
 const roomId = new URLSearchParams(window.location.search).get("room") || "lobby";
@@ -109,6 +127,8 @@ registerSocketHandlers({
     connectedUsers.add(userId);
     updateUserCount();
     console.log(`Connected as user: ${userId}`);
+    // Send username to server
+    socket.emit('user:setname', { username });
   },
   onState: (payload) => {
     strokes = payload.strokes ? JSON.parse(JSON.stringify(payload.strokes)) : [];
@@ -125,6 +145,11 @@ registerSocketHandlers({
     connectedUsers.add(payload.userId);
     updateUserCount();
     console.log(`User joined: ${payload.userId}`);
+    // Store username if provided
+    if (payload.username) {
+      const existing = cursors[payload.userId] || { color: randomColor(payload.userId), userId: payload.userId };
+      cursors[payload.userId] = { ...existing, username: payload.username, userId: payload.userId };
+    }
   },
   onUserLeft: (payload) => {
     connectedUsers.delete(payload.userId);
@@ -177,8 +202,15 @@ registerSocketHandlers({
     if (payload.userId === userId) {
       return;
     }
-    const existing = cursors[payload.userId] || { color: randomColor(payload.userId) };
-    cursors[payload.userId] = { ...existing, x: payload.x, y: payload.y };
+    const existing = cursors[payload.userId] || { color: randomColor(payload.userId), userId: payload.userId };
+    cursors[payload.userId] = { 
+      ...existing, 
+      x: payload.x, 
+      y: payload.y, 
+      userId: payload.userId,
+      username: payload.username || payload.userId.substring(0, 8)
+    };
+    console.log('[CURSOR] Received cursor from:', payload.username || payload.userId, payload);
     drawCursor(cursorCtx, cursorCanvas, cursors);
   },
   onCursorLeave: (payload) => {
@@ -623,7 +655,7 @@ function handlePointerMove(event) {
   // Cursor emission
   const now = Date.now();
   if (now - lastCursorEmitTime > CURSOR_THROTTLE_MS) {
-    socket.emit("cursor", point);
+    socket.emit("cursor", { x: point.x, y: point.y, username });
     lastCursorEmitTime = now;
   }
   

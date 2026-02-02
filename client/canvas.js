@@ -95,10 +95,27 @@ export function drawCursor(ctx, canvas, cursors) {
     if (!cursor) {
       return;
     }
+    const cursorSize = 5 / viewport.scale;
+    const fontSize = 12 / viewport.scale;
+    
+    // Draw cursor circle
     ctx.fillStyle = cursor.color;
     ctx.beginPath();
-    ctx.arc(cursor.x, cursor.y, 5 / viewport.scale, 0, Math.PI * 2);
+    ctx.arc(cursor.x, cursor.y, cursorSize, 0, Math.PI * 2);
     ctx.fill();
+    
+    // Draw user label
+    if (cursor.username || cursor.userId) {
+      const label = cursor.username || cursor.userId.substring(0, 8);
+      ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      ctx.fillStyle = cursor.color;
+      ctx.strokeStyle = '#0f1115';
+      ctx.lineWidth = 3 / viewport.scale;
+      const xOffset = cursorSize + 2 / viewport.scale;
+      const yOffset = cursorSize;
+      ctx.strokeText(label, cursor.x + xOffset, cursor.y - yOffset);
+      ctx.fillText(label, cursor.x + xOffset, cursor.y - yOffset);
+    }
   });
   ctx.restore();
 }
